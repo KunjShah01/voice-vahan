@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import type { SmartSuggestionsOutput } from "@/ai/flows/smart-contextual-suggestions";
 import { getSmartSuggestions } from "@/ai/flows/smart-contextual-suggestions";
 import { multilingualVoiceProcessing } from "@/ai/flows/multilingual-voice-processing";
+import { planTrip, TripPlannerOutput } from "@/ai/flows/trip-planner";
 import { useToast } from "@/hooks/use-toast";
 import VehicleStatus from "@/components/VehicleStatus";
 import MapView from "@/components/MapView";
@@ -11,9 +12,9 @@ import ClimateControl from "@/components/ClimateControl";
 import MediaPlayer from "@/components/MediaPlayer";
 import Suggestions from "@/components/Suggestions";
 import VoiceControl from "@/components/VoiceControl";
+import TripPlanner from "@/components/TripPlanner";
 import {
   AlertDialog,
-  AlertDialogAction,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -50,6 +51,7 @@ export default function Dashboard() {
   });
   const [mediaState, setMediaState] = useState<MediaState>({ status: 'paused', song: 'Chaiyya Chaiyya' });
   const [suggestions, setSuggestions] = useState<SmartSuggestionsOutput['suggestions']>([]);
+  const [tripPlan, setTripPlan] = useState<TripPlannerOutput['plan'] | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -119,10 +121,21 @@ export default function Dashboard() {
         const destination = processedText.split('navigate to')[1]?.trim();
         if (destination) {
           setCarState(prev => ({ ...prev, destination }));
+          setTripPlan(null); // Clear previous trip plan
           response = `Navigating to ${destination}.`;
           commandHandled = true;
         }
+      } else if (lowerCaseCommand.includes('plan a trip')) {
+        response = "Okay, planning your trip...";
+        speak(response);
+        const tripResponse = await planTrip({ query: processedText });
+        setTripPlan(tripResponse.plan);
+        const finalDestination = tripResponse.plan[tripResponse.plan.length - 1].location;
+        setCarState(prev => ({ ...prev, destination: finalDestination }));
+        response = `I've planned a trip to ${finalDestination} for you. You can see the details on the screen.`;
+        commandHandled = true;
       }
+
 
       if (!commandHandled) {
         response = `I understood: "${processedText}". But I can't perform that action yet.`;
@@ -225,7 +238,11 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-6">
           <MapView destination={carState.destination} />
-          <VehicleStatus {...carState} />
+          {tripPlan ? (
+            <TripPlanner plan={tripPlan} />
+          ) : (
+            <VehicleStatus {...carState} />
+          )}
         </div>
 
         <div className="lg:col-span-2 row-span-1 lg:row-span-2">

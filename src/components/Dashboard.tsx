@@ -5,12 +5,12 @@ import type { SmartSuggestionsOutput } from "@/ai/flows/smart-contextual-suggest
 import { getSmartSuggestions } from "@/ai/flows/smart-contextual-suggestions";
 import { multilingualVoiceProcessing } from "@/ai/flows/multilingual-voice-processing";
 import { planTrip, TripPlannerOutput } from "@/ai/flows/trip-planner";
+import { conversationalFlow } from "@/ai/flows/conversational-flow";
 import { useToast } from "@/hooks/use-toast";
 import VehicleStatus from "@/components/VehicleStatus";
 import MapView from "@/components/MapView";
 import ClimateControl from "@/components/ClimateControl";
 import MediaPlayer from "@/components/MediaPlayer";
-import Suggestions from "@/components/Suggestions";
 import VoiceControl from "@/components/VoiceControl";
 import TripPlanner from "@/components/TripPlanner";
 import {
@@ -21,8 +21,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/button";
-
+import { Button } from "./ui/button";
 
 type CarState = {
   fuel: number;
@@ -31,9 +30,17 @@ type CarState = {
   destination: string;
 };
 
+const playlist = [
+  { title: "Chaiyya Chaiyya", artist: "Sukhwinder Singh, Sapna Awasthi", albumArt: "https://placehold.co/300x300.png" },
+  { title: "Kajra Re", artist: "Alisha Chinai, Shankar Mahadevan, Javed Ali", albumArt: "https://placehold.co/300x300.png" },
+  { title: "Jai Ho", artist: "A. R. Rahman, Sukhwinder Singh, Tanvi Shah", albumArt: "https://placehold.co/300x300.png" },
+  { title: "Genda Phool", artist: "Badshah, Payal Dev", albumArt: "https://placehold.co/300x300.png" },
+  { title: "Apna Bana Le", artist: "Arijit Singh", albumArt: "https://placehold.co/300x300.png" },
+];
+
 type MediaState = {
   status: 'playing' | 'paused';
-  song: string;
+  currentSongIndex: number;
 };
 
 // Extend the Window interface for speech recognition
@@ -49,8 +56,7 @@ export default function Dashboard() {
     speed: 60,
     destination: "India Gate, New Delhi",
   });
-  const [mediaState, setMediaState] = useState<MediaState>({ status: 'paused', song: 'Chaiyya Chaiyya' });
-  const [suggestions, setSuggestions] = useState<SmartSuggestionsOutput['suggestions']>([]);
+  const [mediaState, setMediaState] = useState<MediaState>({ status: 'paused', currentSongIndex: 0 });
   const [tripPlan, setTripPlan] = useState<TripPlannerOutput['plan'] | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,25 +68,6 @@ export default function Dashboard() {
   
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const { toast } = useToast();
-
-  const fetchSuggestions = useCallback(async () => {
-    try {
-      const response = await getSmartSuggestions({
-        location: "28.6129° N, 77.2295° E",
-        fuelLevel: carState.fuel,
-        currentTime: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' }),
-        lastKnownDestination: carState.destination,
-      });
-      setSuggestions(response.suggestions);
-    } catch (error) {
-      console.error("Error fetching suggestions:", error);
-      toast({
-        variant: "destructive",
-        title: "Suggestion Error",
-        description: "Could not fetch smart suggestions.",
-      });
-    }
-  }, [carState.fuel, carState.destination, toast]);
 
   const speak = useCallback((text: string) => {
     if (!window.speechSynthesis) return;
@@ -95,61 +82,68 @@ export default function Dashboard() {
   const processCommand = useCallback(async (command: string) => {
     setIsLoading(true);
     setTranscript(command);
-    try {
-      const { processedText } = await multilingualVoiceProcessing({ userSpeech: command });
-      
-      let response = "I'm not sure how to handle that. Please try again.";
-      let commandHandled = false;
+    
+    let response = "I'm not sure how to handle that. Please try again.";
+    let commandHandled = false;
 
-      const lowerCaseCommand = processedText.toLowerCase();
-      const numberMatch = lowerCaseCommand.match(/\d+/);
-      const number = numberMatch ? parseInt(numberMatch[0], 10) : null;
+    const lowerCaseCommand = command.toLowerCase();
+    const numberMatch = lowerCaseCommand.match(/\d+/);
+    const number = numberMatch ? parseInt(numberMatch[0], 10) : null;
 
-      if (lowerCaseCommand.includes('temperature') && number !== null) {
-        setCarState(prev => ({ ...prev, temperature: number }));
-        response = `Temperature set to ${number} degrees.`;
+    if (lowerCaseCommand.includes('temperature') && number !== null) {
+      setCarState(prev => ({ ...prev, temperature: number }));
+      response = `Temperature set to ${number} degrees.`;
+      commandHandled = true;
+    } else if (lowerCaseCommand.includes('play music')) {
+      setMediaState(prev => ({ ...prev, status: 'playing' }));
+      response = `Playing ${playlist[mediaState.currentSongIndex].title}.`;
+      commandHandled = true;
+    } else if (lowerCaseCommand.includes('pause music')) {
+      setMediaState(prev => ({ ...prev, status: 'paused' }));
+      response = "Music paused.";
+      commandHandled = true;
+    } else if (lowerCaseCommand.includes('next song')) {
+        setMediaState(prev => ({ ...prev, currentSongIndex: (prev.currentSongIndex + 1) % playlist.length, status: 'playing' }));
+        const nextSongIndex = (mediaState.currentSongIndex + 1) % playlist.length;
+        response = `Playing next song: ${playlist[nextSongIndex].title}.`;
         commandHandled = true;
-      } else if (lowerCaseCommand.includes('play music')) {
-        setMediaState(prev => ({ ...prev, status: 'playing' }));
-        response = `Playing ${mediaState.song}.`;
+    } else if (lowerCaseCommand.includes('previous song')) {
+        setMediaState(prev => ({ ...prev, currentSongIndex: (prev.currentSongIndex - 1 + playlist.length) % playlist.length, status: 'playing' }));
+        const prevSongIndex = (mediaState.currentSongIndex - 1 + playlist.length) % playlist.length;
+        response = `Playing previous song: ${playlist[prevSongIndex].title}.`;
         commandHandled = true;
-      } else if (lowerCaseCommand.includes('pause music')) {
-        setMediaState(prev => ({ ...prev, status: 'paused' }));
-        response = "Music paused.";
-        commandHandled = true;
-      } else if (lowerCaseCommand.includes('navigate to')) {
-        const destination = processedText.split('navigate to')[1]?.trim();
-        if (destination) {
-          setCarState(prev => ({ ...prev, destination }));
-          setTripPlan(null); // Clear previous trip plan
-          response = `Navigating to ${destination}.`;
-          commandHandled = true;
-        }
-      } else if (lowerCaseCommand.includes('plan a trip')) {
-        response = "Okay, planning your trip...";
-        speak(response);
-        const tripResponse = await planTrip({ query: processedText });
-        setTripPlan(tripResponse.plan);
-        const finalDestination = tripResponse.plan[tripResponse.plan.length - 1].location;
-        setCarState(prev => ({ ...prev, destination: finalDestination }));
-        response = `I've planned a trip to ${finalDestination} for you. You can see the details on the screen.`;
+    } else if (lowerCaseCommand.includes('navigate to')) {
+      const destination = command.split(/navigate to/i)[1]?.trim();
+      if (destination) {
+        setCarState(prev => ({ ...prev, destination }));
+        setTripPlan(null);
+        response = `Navigating to ${destination}.`;
         commandHandled = true;
       }
-
-
-      if (!commandHandled) {
-        response = `I understood: "${processedText}". But I can't perform that action yet.`;
-      }
-      
+    } else if (lowerCaseCommand.includes('plan a trip')) {
+      response = "Okay, planning your trip...";
       speak(response);
-
-    } catch (error) {
-      console.error("Error processing command:", error);
-      speak("Sorry, I had trouble understanding. Please try again.");
-    } finally {
-      setIsLoading(false);
+      const tripResponse = await planTrip({ query: command });
+      setTripPlan(tripResponse.plan);
+      const finalDestination = tripResponse.plan[tripResponse.plan.length - 1].location;
+      setCarState(prev => ({ ...prev, destination: finalDestination }));
+      response = `I've planned a trip to ${finalDestination} for you. You can see the details on the screen.`;
+      commandHandled = true;
     }
-  }, [speak, mediaState.song]);
+    
+    if (!commandHandled) {
+      try {
+        const conversationalResponse = await conversationalFlow({ query: command });
+        response = conversationalResponse.answer;
+      } catch (error) {
+        console.error("Error with conversational flow:", error);
+        response = "I'm having a little trouble right now. Please try again later.";
+      }
+    }
+    
+    speak(response);
+    setIsLoading(false);
+  }, [speak, mediaState.currentSongIndex]);
   
   const toggleListening = useCallback(() => {
     if (isListening) {
@@ -160,7 +154,6 @@ export default function Dashboard() {
       setAssistantResponse("Listening...");
     }
   }, [isListening]);
-
 
   useEffect(() => {
     setIsMounted(true);
@@ -184,11 +177,13 @@ export default function Dashboard() {
     recognition.onend = () => setIsListening(false);
     recognition.onerror = (event) => {
       console.error("Speech recognition error:", event.error);
-      toast({
-        variant: "destructive",
-        title: "Speech Error",
-        description: `An error occurred: ${event.error}`,
-      });
+      if (event.error !== 'no-speech') {
+        toast({
+          variant: "destructive",
+          title: "Speech Error",
+          description: `An error occurred: ${event.error}`,
+        });
+      }
     };
 
     recognition.onresult = (event) => {
@@ -207,12 +202,6 @@ export default function Dashboard() {
       recognitionRef.current?.stop();
     };
   }, [processCommand, toast]);
-
-  useEffect(() => {
-    fetchSuggestions();
-    const intervalId = setInterval(fetchSuggestions, 30000);
-    return () => clearInterval(intervalId);
-  }, [fetchSuggestions]);
   
   const handleBookNow = (name: string, type: string) => {
     setBookingDetails({ name, type });
@@ -227,6 +216,16 @@ export default function Dashboard() {
       title: "Booking Confirmed!",
       description: `Enjoy your ${bookingDetails.type} at ${bookingDetails.name}.`,
     });
+  };
+
+  const handleMediaControl = (action: 'toggle' | 'next' | 'prev') => {
+    if (action === 'toggle') {
+      setMediaState(prev => ({ ...prev, status: prev.status === 'playing' ? 'paused' : 'playing' }));
+    } else if (action === 'next') {
+      setMediaState(prev => ({ ...prev, currentSongIndex: (prev.currentSongIndex + 1) % playlist.length, status: 'playing' }));
+    } else if (action === 'prev') {
+      setMediaState(prev => ({ ...prev, currentSongIndex: (prev.currentSongIndex - 1 + playlist.length) % playlist.length, status: 'playing' }));
+    }
   };
 
   if (!isMounted) {
@@ -257,11 +256,11 @@ export default function Dashboard() {
 
         <div className="lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-6">
           <ClimateControl temperature={carState.temperature} setTemperature={(temp) => setCarState(s => ({ ...s, temperature: temp }))} />
-          <MediaPlayer {...mediaState} />
-        </div>
-        
-        <div className="col-span-1 md:col-span-2 lg:col-span-5">
-            <Suggestions suggestions={suggestions} onBookNow={handleBookNow} />
+          <MediaPlayer 
+            song={playlist[mediaState.currentSongIndex]}
+            status={mediaState.status}
+            onControl={handleMediaControl}
+          />
         </div>
       </div>
 

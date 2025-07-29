@@ -13,6 +13,7 @@ import ClimateControl from "@/components/ClimateControl";
 import MediaPlayer from "@/components/MediaPlayer";
 import VoiceControl from "@/components/VoiceControl";
 import TripPlanner from "@/components/TripPlanner";
+import Suggestions from "@/components/Suggestions";
 import {
   AlertDialog,
   AlertDialogContent,
@@ -58,6 +59,7 @@ export default function Dashboard() {
   });
   const [mediaState, setMediaState] = useState<MediaState>({ status: 'paused', currentSongIndex: 0 });
   const [tripPlan, setTripPlan] = useState<TripPlannerOutput['plan'] | null>(null);
+  const [suggestions, setSuggestions] = useState<SmartSuggestionsOutput['suggestions']>([]);
   const [isListening, setIsListening] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [transcript, setTranscript] = useState('');
@@ -198,10 +200,33 @@ export default function Dashboard() {
       }
     };
 
+    // Fetch smart suggestions on mount
+    const fetchSuggestions = async () => {
+      try {
+        const now = new Date();
+        const suggestions = await getSmartSuggestions({
+          location: "28.6139, 77.2090", // Approx. New Delhi
+          fuelLevel: carState.fuel,
+          currentTime: `${now.getHours()}:${now.getMinutes()}`,
+          lastKnownDestination: carState.destination,
+        });
+        setSuggestions(suggestions.suggestions);
+      } catch (error) {
+        console.error("Failed to fetch smart suggestions:", error);
+        toast({
+          variant: "destructive",
+          title: "Suggestion Error",
+          description: "Could not load smart suggestions.",
+        });
+      }
+    };
+    fetchSuggestions();
+
+
     return () => {
       recognitionRef.current?.stop();
     };
-  }, [processCommand, toast]);
+  }, [processCommand, toast, carState.fuel, carState.destination]);
   
   const handleBookNow = (name: string, type: string) => {
     setBookingDetails({ name, type });
@@ -262,6 +287,11 @@ export default function Dashboard() {
             onControl={handleMediaControl}
           />
         </div>
+        
+        <div className="lg:col-span-5">
+           <Suggestions suggestions={suggestions} onBookNow={handleBookNow} />
+        </div>
+
       </div>
 
       <AlertDialog open={isBooking} onOpenChange={setIsBooking}>

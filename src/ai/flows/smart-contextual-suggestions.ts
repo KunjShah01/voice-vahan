@@ -1,4 +1,3 @@
-// src/ai/flows/smart-contextual-suggestions.ts
 'use server';
 
 /**
@@ -13,9 +12,7 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const SmartSuggestionsInputSchema = z.object({
-  location: z
-    .string()
-    .describe('The current GPS coordinates of the vehicle.'),
+  location: z.string().describe('The current GPS coordinates of the vehicle.'),
   fuelLevel: z.number().describe('The current fuel level of the vehicle (%).'),
   currentTime: z.string().describe('The current time of day (e.g., 13:30).'),
   lastKnownDestination: z
@@ -29,7 +26,11 @@ export type SmartSuggestionsInput = z.infer<typeof SmartSuggestionsInputSchema>;
 const SmartSuggestionsOutputSchema = z.object({
   suggestions: z.array(
     z.object({
-      type: z.string().describe('The type of suggestion (e.g., restaurant, coffee shop, gas station).'),
+      type: z
+        .string()
+        .describe(
+          'The type of suggestion (e.g., restaurant, coffee shop, gas station).'
+        ),
       name: z.string().describe('The name of the suggested place.'),
       location: z.string().describe('The GPS coordinates of the suggested place.'),
       reason: z.string().describe('The reason for the suggestion.'),
@@ -37,9 +38,13 @@ const SmartSuggestionsOutputSchema = z.object({
   ),
 });
 
-export type SmartSuggestionsOutput = z.infer<typeof SmartSuggestionsOutputSchema>;
+export type SmartSuggestionsOutput = z.infer<
+  typeof SmartSuggestionsOutputSchema
+>;
 
-export async function getSmartSuggestions(input: SmartSuggestionsInput): Promise<SmartSuggestionsOutput> {
+export async function getSmartSuggestions(
+  input: SmartSuggestionsInput
+): Promise<SmartSuggestionsOutput> {
   return smartContextualSuggestionsFlow(input);
 }
 
@@ -47,6 +52,7 @@ const prompt = ai.definePrompt({
   name: 'smartContextualSuggestionsPrompt',
   input: {schema: SmartSuggestionsInputSchema},
   output: {schema: SmartSuggestionsOutputSchema},
+  model: 'googleai/gemini-1.5-flash-latest',
   prompt: `You are an AI assistant in a car that proactively provides smart suggestions to the driver based on their current context.
 
   It is now {{{currentTime}}}.
